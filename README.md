@@ -65,24 +65,4 @@ heatmap_plot <- ggplot(data = melted_cor_matrix, aes(x = Var1, y = Var2, fill = 
        y = "Variables")
 
 print(heatmap_plot)
-```r
-### Logistic Regression Model
-f1 <- glm(
-  Attrition ~ ., 
-  data = training_1[keep_idx, ],
-  family = binomial("logit")
-)
-summary(f1)
-plot(f1)
 
-##ROC Curve for Model Validation
-roc_validation3 <- roc(
-  data = tibble(
-    actual = validate_2 %>% select(Attrition) %>% unlist(),
-    predicted = preds_validation3
-  ), 
-  "actual", "predicted"
-)
-plot(roc_validation3, main = "ROC Curve for Model Validation")
-auc_value <- auc(roc_validation3) 
-print(paste("AUC:", auc_value))
