@@ -65,8 +65,8 @@ heatmap_plot <- ggplot(data = melted_cor_matrix, aes(x = Var1, y = Var2, fill = 
        y = "Variables")
 
 print(heatmap_plot)
-
-##Logistic Regression Model
+```r
+###Logistic Regression Model
 f1 <- glm(
   Attrition ~ ., 
   data = training_1[keep_idx, ],
