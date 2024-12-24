@@ -1,0 +1,332 @@
+### Week 4 Multiple Logistic Regression ----
+
+### Set up ----
+
+# load libraries
+library(tidyverse)
+
+library(caret)
+
+library(GGally)
+
+library(broom)
+
+library(car) # Variance inflation factor
+
+library(readxl) # read excel files
+
+library(pROC) #Sampling-over and under, ROC and AUC curve
+
+library(margins) # for marginal effects
+
+
+# set a random seed for reproducibility
+set.seed(385)
+
+### Load Data ----
+loans <- read_csv("Loan Default Prediction2.csv")
+
+# check data structure
+str(loans)
+
+# check missing values
+loans |>
+  summarize(
+    across(everything(), function(x) sum(is.na(x)))
+  )
+
+# any obvious pre-formatting, do here (e.g., numeric to categorical etc.)
+loans <- 
+  loans |>
+  mutate(
+    SeriousDlqin2yrs = factor(SeriousDlqin2yrs)
+  )
+
+### Step 1: Create a train/test split ----
+
+test_idx <- createDataPartition(
+  loans$SeriousDlqin2yrs,
+  p = 0.3
+)
+
+loans_test <- loans[test_idx[[1]], ]
+
+loans_train <- loans[-test_idx[[1]], ]
+
+validation_idx <- createDataPartition(
+  loans_train$SeriousDlqin2yrs,
+  p = 0.3
+)
+
+loans_validation <- loans[validation_idx[[1]], ]
+
+loans_train <- loans_train[-validation_idx[[1]], ]
+
+### Step 2: Data Exploration ----
+
+summary(loans_train)
+
+loans_train[sample(1:nrow(loans_train), 5000), ] |> # sampling to save my computer
+  ggpairs(aes(color = SeriousDlqin2yrs, alpha = 0.4))
+
+
+### Step 3: Data pre-processing ----
+
+# we have lots of data so we can do a complete case analysis
+loans_train <- 
+  loans_train |>
+  drop_na()
+
+# we have imbalanced classes. Let's downsample the negative class
+# create vector of indices to keep
+keep_idx <- c(
+  which(loans_train$SeriousDlqin2yrs == "1"), # indices of positive class
+  sample(which(loans_train$SeriousDlqin2yrs != "1"), 5000)
+)
+
+# let's see what that did
+loans_train[keep_idx, ] |>
+  ggpairs(aes(color = SeriousDlqin2yrs, alpha = 0.4))
+
+### Step 4: Feature Engineering ----
+
+### Step 5: Feature & Model Selection ----
+
+f1 <- glm(
+  SeriousDlqin2yrs ~ . +
+    I(Age ^ 2) +
+    I(Num_loans ^ 2) + 
+    I(Num_dependents ^ 2) + 
+    I(MonthlyIncome ^ 2 ) +
+    I(Num_Savings_Accts ^ 2) + 
+    I(DebtRatio ^ 2),
+  data = loans_train[keep_idx, ] |> # 
+    select(
+      -Cust_id
+    ),
+  family = binomial("logit")
+)
+
+summary(f1)
+
+vif(f1)
+
+roc1 <- roc(
+  data = tibble(
+    actual = loans_train |> # not using balanced data for evaluation
+      select(SeriousDlqin2yrs) |>
+      unlist(),
+    predicted = predict(f1, loans_train)
+  ),
+  "actual",
+  "predicted"
+)
+
+plot(roc1)
+
+roc1$auc
+
+# Let's use stepwise regression to  help pare down some variables
+f_step <- step(
+  object = f1,
+  direction = "both"
+)
+
+summary(f_step)
+
+vif(f_step)
+
+roc_step <- roc(
+  data = tibble(
+    actual = loans_train |> # not using balanced data for evaluation 
+      select(SeriousDlqin2yrs) |>
+      unlist(),
+    predicted = predict(f_step, loans_train)
+  ),
+  "actual",
+  "predicted"
+)
+
+plot(roc_step)
+
+roc_step$auc # didn't do much for in-sample prediction
+
+# let's pick a final model 
+# Using my judgment: Drop Age ^2, DebtRatio, and DebtRatio ^ 2
+f_final <- 
+  glm(
+    SeriousDlqin2yrs ~  +
+      Age +
+      Num_loans +
+      I(Num_loans ^ 2) + 
+      Num_dependents +
+      MonthlyIncome +
+      I(MonthlyIncome ^ 2 ) +
+      Num_Savings_Accts +
+      I(Num_Savings_Accts ^ 2) ,
+    data = loans_train[keep_idx, ] |>
+      select(
+        -Cust_id
+      ),
+    family = binomial("logit")
+  )
+
+summary(f_final)
+
+roc_final <- roc(
+  data = tibble(
+    actual = loans_train |> # not using balanced data for evaluation
+      select(SeriousDlqin2yrs) |>
+      unlist(),
+    predicted = predict(f_final, loans_train)
+  ),
+  "actual",
+  "predicted"
+)
+
+plot(roc_final)
+
+roc_final$auc # little decrease in AUC, I will accept it
+
+### Step 6: Model Validation ----
+preds_validation <- predict(f_final, loans_validation)
+
+roc_validation <- roc(
+  data = tibble(
+    actual = loans_validation |> 
+      select(SeriousDlqin2yrs) |>
+      unlist(),
+    predicted = preds_validation
+  ),
+  "actual",
+  "predicted"
+)
+
+plot(roc_validation)
+
+roc_final$auc # not much difference --> ship it!
+
+
+### Step 7: Predictions and Conclusions ----
+
+# See how it performs on held out data
+preds_test <- predict(f_final, loans_test)
+
+roc_test <- roc(
+  data = tibble(
+    actual = loans_test |> 
+      select(SeriousDlqin2yrs) |>
+      unlist(),
+    predicted = preds_test
+  ),
+  "actual",
+  "predicted"
+)
+
+plot(roc_test)
+
+roc_test$auc # not much difference --> woo!
+
+# Re-train the model on the whole data set for marginal effects/production
+# why? Because we want as much data as possible in our final model.
+# We verified that the model specification generalizes well enough with a 
+# train/validate/test split
+
+# first, balance classes before training
+sum(loans$SeriousDlqin2yrs == "1") # put in quotes because it's a factor now
+
+
+keep_idx_whole <- c(
+  which(loans$SeriousDlqin2yrs == "1"), # indices of positive class
+  sample(which(loans$SeriousDlqin2yrs != "1"), 10026)
+)
+
+f_prod <- 
+  glm(
+    SeriousDlqin2yrs ~  +
+      Age +
+      Num_loans +
+      I(Num_loans ^ 2) + 
+      Num_dependents +
+      MonthlyIncome +
+      I(MonthlyIncome ^ 2 ) +
+      Num_Savings_Accts +
+      I(Num_Savings_Accts ^ 2) ,
+    data = loans[keep_idx_whole, ] |> 
+      select(
+        -Cust_id
+      ),
+    family = binomial("logit")
+  )
+
+summary(f_prod)
+
+roc_prod <- roc( # unbalancing classes for the evaluation
+  data = tibble(
+    actual = loans |> 
+      select(SeriousDlqin2yrs) |>
+      unlist(),
+    predicted = predict(f_prod, loans, type = "response")
+  ),
+  "actual",
+  "predicted"
+)
+
+plot(roc_prod)
+
+roc_prod$auc 
+
+# marginal effects
+coefs <- tidy(f_prod) |>
+  mutate(
+    odds = exp(estimate),
+    odds_mfx = odds - 1
+  )
+
+coefs
+
+
+mfx <- margins(f_prod)
+
+str(mfx) # notice this is a big object
+
+# instead of getting into the details of messing with it, feel free to 
+# print to screen and grab the mfx that way
+mfx
+
+
+
+# Remember: if you use a quadratic and see the coefficients are opposite signs
+# you have a critical point.
+# plot marginal effect on terms with critical points
+
+summary(f_prod)
+
+loans |>
+  ggplot(aes(
+    x = Num_loans, 
+    y = 1 / (1 + exp(-1 * (coefs$estimate[1] + coefs$estimate[3] * Num_loans + coefs$estimate[4] * Num_loans ^ 2)))
+  )) + 
+  geom_line() + 
+  xlab("Number of Loans") +
+  ylab("P(default|number of loans, excluding other variables)")
+
+loans |>
+  ggplot(aes(
+    x = MonthlyIncome / 1000, 
+    y = 1 / (1 + exp(-1 * (coefs$estimate[1] + coefs$estimate[6] * MonthlyIncome + coefs$estimate[7] * MonthlyIncome ^ 2)))
+  )) + 
+  geom_line() + 
+  xlab("Monthly income, $'000") +
+  ylab("P(default|monthly income, excluding other variables)")
+
+
+loans |>
+  ggplot(aes(
+    x = Num_Savings_Accts, 
+    y = 1 / (1 + exp(-1 * (coefs$estimate[1] + coefs$estimate[8] * Num_Savings_Accts + coefs$estimate[9] * Num_Savings_Accts ^ 2)))
+  )) + 
+  geom_line() + 
+  xlab("Number of Savings Accounts") + 
+  ylab("P(default|number of savings accts., excluding other variables)")
+

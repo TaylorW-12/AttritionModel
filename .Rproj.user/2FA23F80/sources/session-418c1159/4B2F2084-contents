@@ -1,0 +1,212 @@
+### Week 4 Exercise ----
+
+# Our goal is to predict whether a penguin is male or female based on its characteristics.
+
+### Set up ----
+
+# load libraries
+library(tidyverse) # tidyverse
+
+library(broom) # to clean model outputs
+
+library(GGally) # for pairs plots with ggplot
+
+library(palmerpenguins) # for example 1
+
+library(caret) # train/test splits and cross validation splits
+
+library(pROC) # Sampling-over and under, ROC and AUC curve
+
+library(margins) # for average marginal effects
+
+# Set seed for reproducibility
+set.seed(90210)
+
+### Load Data ----
+data(penguins)
+
+# Let's do a complete case analysis for simplicity
+penguins <- penguins |>
+  drop_na()
+
+### Step 1: Create a train/test split ----
+penguins_partition <- 
+  createDataPartition(
+    1:nrow(penguins), # no stratification
+    p = 0.2
+  )
+
+penguins_train <- 
+  penguins[-penguins_partition[[1]], ]
+
+penguins_test <- 
+  penguins[penguins_partition[[1]], ]
+
+validate_partition <- 
+  createDataPartition(
+    1:nrow(penguins_train),
+    p = 0.3
+  )
+
+penguins_validate <- 
+  penguins_train[validate_partition[[1]], ]
+
+penguins_train <- 
+  penguins_train[-validate_partition[[1]], ]
+
+### Step 2: Data Exploration ----
+
+summary(penguins_train)
+
+# correlations
+# can use ggpairs on small data
+# larger data means using subsets and/or manual calculation of stats
+penguins_train |>
+  select(
+    - year,
+  ) |>
+  ggpairs(aes(color = sex, alpha = 0.5))
+
+
+### Step 3: Data pre-processing ----
+## Skipping for now. Going with complete case analysis
+
+### Step 4: Feature Engineering ----
+## Skipping for now. Mostly doing transformations in formulas, below.
+
+### Step 5: Feature & Model Selection ----
+
+# build a logistic regression model predicting sex
+# include all variables in your data set except year
+f <- glm(
+  sex ~ .,
+  data = penguins_train |>
+    select(
+      -year
+    ),
+  family = binomial("logit")
+)
+
+# summarize your model
+summary(f)
+
+# Get the in-sample AUC
+f_roc <- tibble(
+  actual = penguins_train$sex,
+  predicted = predict(f, penguins_train, type = "response")
+) |>
+  roc("actual", "predicted")
+
+plot(f_roc)
+
+f_roc$auc 
+
+# use stepwise regression with direction = "both" to select variables automatically
+f_step <- step(
+  f,
+  direction = "both"
+)
+
+summary(f_step)
+
+# get the in-sample AUC
+f_step_roc <- tibble(
+  actual = penguins_train$sex,
+  predicted = predict(f_step, penguins_train, type = "response")
+) |>
+  roc("actual", "predicted")
+
+plot(f_step_roc)
+
+f_step_roc$auc 
+
+# which model works better?
+
+f_step_roc$auc < f_roc$auc # kitchen sink works better
+
+### Step 6: Model Evaluation ----
+
+# plot a ROC curve and get AUC of both models above
+# which is better?
+pred_table <- 
+  tibble(
+    actual = penguins_validate$sex,
+    pred_f = predict(f, penguins_validate, type = "response"),
+    pred_step = predict(f_step, penguins_validate, type = "response")
+  )
+
+f_roc_validate <- pred_table |>
+  roc("actual", "pred_f")
+
+f_step_roc_validate <- pred_table |>
+  roc("actual", "pred_step")
+
+f_roc_validate$auc
+
+f_step_roc_validate$auc # now stepwise is a little higher
+
+
+
+# Choose the model you think is better
+# get that model's marginal effects on the odds
+# get that model's approximate marginal effects on the probabilities
+
+coefs <- tidy(f_step) |>
+  mutate(
+    odds = exp(estimate),
+    odds_mfx = odds - 1
+  )
+
+coefs
+
+margins(f_step)
+
+# pick the variable with the highest marginal effect of both odds and probabilities
+# Are they the same variable?
+# For each, write a sentence in English describing how that/those variable(s)
+# affect the odds/probability of predicting a penguin's sex
+
+### Answer ---
+
+# The variable with the highest odds marginal effects is bill_depth_mm
+# The variable with the highest (absolute value) of approximate probability mfx
+# is species "Gentoo".
+
+# An increase of 1mm in bill depth increases the odds of a penguin being a male
+# by 686 percentage points, all else constant.
+
+# Being of the species Gentoo reduces the probability of a penguin being a male
+# by approximately 0.44, all else constant.
+
+
+### Step 7: Predictions and Conclusions ----
+
+# feel free 
+
+# ^^^ That should have read "feel free to retrain your model on both training
+# and validation sets and see how it fares in testing"
+
+f_final <- glm(
+  sex ~ 
+    species +
+    bill_length_mm + 
+    bill_depth_mm + 
+    body_mass_g,
+  data = rbind(penguins_train, penguins_validate),
+  family = binomial("logit")
+)
+
+summary(f_final)
+
+f_final_roc <- 
+  tibble(
+    actual = c(penguins_test$sex),
+    predicted = predict(f_final, penguins_test, "response")
+  ) |>
+  roc("actual", "predicted")
+
+plot(f_final_roc)
+
+f_final_roc$auc
+
+

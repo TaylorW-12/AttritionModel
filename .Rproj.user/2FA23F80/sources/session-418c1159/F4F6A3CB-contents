@@ -1,0 +1,1198 @@
+###Taylor Washington 
+###Assignment 1
+
+
+
+### Load libraries----
+library(tidyverse) # tidyverse
+
+library(GGally) # for pairs plots with ggplot
+
+library(caret) # our primary modeling package
+
+library(broom)
+
+library(mvrsquared)
+
+library(ggridges)
+
+library(dplyr)
+
+library(ggplot2)
+
+library(car)
+install.packages("lmtest") 
+install.packages("sandwich") 
+library(lmtest) 
+library(sandwich)
+
+### Load Data ----
+bike_data=read.csv("C:/Users/LokiA/OneDrive/Desktop/Machine Learning I/Assignment_1/Bike_data.csv")
+view(bike_data)
+
+### Set seed for reproducibility----
+set.seed(410)
+
+### Create a train/test/validation split----
+bike_data_partition=
+  createDataPartition(
+    1:nrow(bike_data),
+    times=1,
+    p=.3
+  )
+
+bike_data_training=bike_data[-bike_data_partition[[1]], ] #creates training set
+bike_data_test=bike_data[bike_data_partition[[1]], ] #creates test set
+
+validation_bike_data=
+  createDataPartition(
+    1:nrow(bike_data_training),
+    times=1,
+    p=0.3
+  )
+validation_set=bike_data_training[validation_bike_data[[1]],] #creates validation set
+bike_train=bike_data_training[-validation_bike_data[[1]],] #creates training set
+
+### Data Exploration ----
+#### Summary statistics for all data ----
+numeric_summaries_all=   
+  bike_data |>
+  select(
+    where(is.numeric),
+    
+    
+  )|>
+  pivot_longer(everything()) |> 
+  summarize(
+    mean=mean(value,na.rm=TRUE),
+    median=median(value,na.rm=TRUE),
+    sd=sd(value,na.rm=TRUE),
+    num_missing=sum(is.na(value)),
+    var=var(value,na.rm=TRUE),
+    .by=name
+  )
+numeric_summaries_all
+
+#### Summary statistics for training data ----
+numeric_summaries=   
+  bike_train |>
+  select(
+    where(is.numeric),
+    
+    
+  )|>
+  pivot_longer(everything()) |> 
+  summarize(
+    mean=mean(value,na.rm=TRUE),
+    median=median(value,na.rm=TRUE),
+    sd=sd(value,na.rm=TRUE),
+    num_missing=sum(is.na(value)),
+    var=var(value,na.rm=TRUE),
+    .by=name
+  )
+numeric_summaries
+
+
+str(bike_train) #list dataframe
+
+
+#### Time Based Analysis----
+#####Count of all users each hr----
+ggplot(bike_train, aes(x = hr)) +
+  geom_bar(aes(y = registered, fill = "Registered Users"), stat = "identity", position = "dodge") +
+  geom_bar(aes(y = casual, fill = "Casual Users"), stat = "identity", position = "dodge") +
+  labs(title = "Average of All Users Each hr", x = "Hr", y = "Number of Users", fill = "User Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Registered Users" = "steelblue", "Casual Users" = "green")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom") # Position the legend on the right
+
+#####Registered Users by Hour----
+ggplot(bike_train, aes(x = factor(hr), y = registered)) +
+  geom_bar(stat = "identity", fill = "steelblue") +  
+  labs(title = "Registered Users by Hour", x = "Hour of the Day", y = "Number of Registered Users") +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) #angle text at the bottom to ensure it all fits
+
+#####Casual Users by Hour----
+ggplot(bike_train, aes(x = factor(hr), y = cnt)) +
+  geom_bar(stat = "identity", position="dodge") + 
+  fa
+labs(title = "Casual Users by Hour", x = "Hour of the Day", y = "Number of Casual Users") +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_fill_manual(values=c("registered"="blue","casual"="green"))
+
+
+#####Usage of Bike Rental by Registered Users on Working Day----
+
+ggplot(bike_train, aes(x = factor(workingday), y = registered)) +
+  geom_bar(stat = "identity", fill = "orange") +  
+  labs(title = "Registered Users by Day", x = "Working Day", y = "Number of Registered Users") +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#####Usage of Bike Rental by Casual Users on Working Day----
+
+ggplot(bike_train, aes(x = factor(workingday), y = casual)) +
+  geom_bar(stat = "identity", fill = "purple") +  
+  labs(title = "Casual Users by Hour", x = "Hour of the Day", y = "Number of Registered Users") +
+  theme_minimal() +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#####Usage of Bike Rental by All Users on Working Day----
+
+ggplot(bike_train, aes(x = factor(workingday), y = registered, fill = "Registered Users")) +
+  geom_bar(stat = "identity", position = "dodge", fill = "steelblue") +
+  geom_bar(aes(y = casual, fill = "Casual Users"), stat = "identity", position = "dodge", fill = "green") +
+  labs(title = "Bike Users by Hour", x = "Working Day", y = "Number of Users") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Registered Users" = "steelblue", "Casual Users" = "green")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#####Usage of Bike Rental by Registered Users on Weekday----
+
+ggplot(bike_train, aes(x = factor(weekday), y = registered)) +
+  geom_bar(stat = "identity", fill = "orange") +  
+  labs(title = "Registered Users by Hour", x = "Weekday",y = "Number of Registered Users") +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#####Usage of Bike Rental by Casual Users on Weekday----
+
+ggplot(bike_train, aes(x = factor(weekday), y = casual)) +
+  geom_bar(stat = "identity", fill = "pink") +  
+  labs(title = "Registered Users by Hour", x = "Weekday", y = "Number of Registered Users") +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#####Usage of Bike Rental by All Users on Weekday----
+ggplot(bike_train, aes(x=hr, y=cnt, color=factor(weekday)))+ #Hourly Rental Patterns by Weekday
+  geom_line(stat="summary",fun="mean")+
+  labs(title="Hourly Rental Patterns by Weekday", x="Hour", y="Average Rentals")
+
+#####Usage of Bike Rental by All Users on Weekday----
+
+ggplot(bike_train,aes(x=factor(holiday), y=cnt))+ #Rentals on Holiday vs. Non-Holidays
+  geom_boxplot()+
+  labs(title="Rentals on Holidays vs. Non-Holidays",x="Holiday",y="Total Rentals")
+
+
+####Weather Based Analysis----
+#####Temperature Impact on Casual Users Usage----
+
+ggplot(bike_train,aes(x=temp, y=casual))+ #temperatures impact on rentals (significant)
+  geom_bar(stat = "identity", fill="yellow")
+labs(title="Temperature vs. Rentals", x="Temperature",y="Total Rentals")
+
+#####Temperature Impact on Registered Users Usage----
+
+ggplot(bike_train,aes(x=temp, y=registered))+ #temperatures impact on rentals (significant)
+  geom_bar(stat = "identity", fill="red")
+labs(title="Temperature vs. Rentals", x="Temperature",y="Total Rentals")
+
+#####Temperature Impact on All Users Usage----
+ggplot(bike_train, aes(x = temp)) +
+  geom_bar(aes(y = registered, fill = "Registered Users"), stat = "identity", position = "dodge") +
+  geom_bar(aes(y = casual, fill = "Casual Users"), stat = "identity", position = "dodge") +
+  labs(title = "Temperature Impact on All Users Usage", x = "Temperature", y = "Number of Users", fill = "User Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Registered Users" = "steelblue", "Casual Users" = "green")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom") # Position the legend on the right
+
+
+#####Humidity Impact on Casual Users Usage----
+
+ggplot(bike_train, aes(x=hum, y=casual))+ #humidity impact on rentals 
+  geom_bar(stat = "identity", fill="orange")
+labs(title="Humidity vs. Rentals",x="Humidity",y="Total Rentals")
+
+#####Humidity Impact on Registered Users Usage----
+
+ggplot(bike_train, aes(x=hum, y=registered))+ #humidity impact on rentals 
+  geom_bar(stat = "identity", fill="blue")
+labs(title="Humidity vs. Rentals",x="Humidity",y="Total Rentals")
+
+#####Humidity Impact on All Users Usage----
+ggplot(bike_train, aes(x = hum)) +
+  geom_bar(aes(y = registered, fill = "Registered Users"), stat = "identity", position = "dodge") +
+  geom_bar(aes(y = casual, fill = "Casual Users"), stat = "identity", position = "dodge") +
+  labs(title = "Humidity Impact on All Users Usage", x = "Humidity", y = "Number of Users", fill = "User Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Registered Users" = "steelblue", "Casual Users" = "green")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom") # Position the legend on the right
+
+
+#####Windspeed Impact on Casual Users Usage----
+
+ggplot(bike_train, aes(x=windspeed, y=casual))+ #windspeed impact on rentals 
+  geom_bar(stat = "identity", fill="brown")
+labs(title="Windspeed vs. Rentals",x="Windspeed",y="Total Rentals")
+
+#####Windspeed Impact on Registered Users Usage----
+
+ggplot(bike_train, aes(x=windspeed, y=registered))+ #windspeed impact on rentals 
+  geom_bar(stat = "identity", fill="black")
+labs(title="Windspeed vs. Rentals",x="Windspeed",y="Total Rentals")
+
+#####Windspeed Impact on All Users Usage----
+
+ggplot(bike_train, aes(x = windspeed)) +
+  geom_bar(aes(y = registered, fill = "Registered Users"), stat = "identity", position = "dodge") +
+  geom_bar(aes(y = casual, fill = "Casual Users"), stat = "identity", position = "dodge") +
+  labs(title = "Windspeed Impact on All Users Usage", x = "Windspeed", y = "Number of Users", fill = "User Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Registered Users" = "steelblue", "Casual Users" = "green")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom") # Position the legend on the right
+
+
+#####Relationship Between Registered User and Weather Conditions----
+ggplot(bike_train, aes(x = factor(weathersit), y = registered, fill = factor(weathersit))) + #Relationship Between Weather and Rental
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_text(stat = "summary", fun = "mean", aes(label = round(..y.., 1)), vjust = -0.5) +
+  labs(title = "Average Bike Rentals for Registered Users by Weather Category", x = "Weather Category", y = "Average Rental Count of Registered Users",fill = "Weather Condition") +
+  scale_fill_manual(values = c("1" = "blue","2" = "green", "3" = "orange", "4" = "red"),
+                    labels=c("1"="Clear or Partly Cloudy", "2"="Mist of cloudy","3"="Light snow/rain or thunderstorm","4"="Heavy rain/snow or fog"))+
+  theme_minimal()
+
+#####Relationship Between Casual User and Weather Conditions----
+ggplot(bike_train, aes(x = factor(weathersit), y = casual, fill = factor(weathersit))) + #Relationship Between Weather and Rental
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_text(stat = "summary", fun = "mean", aes(label = round(..y.., 1)), vjust = -0.5) +
+  labs(title = "Average Bike Rentals for Casual Users by Weather Category", x = "Weather Category", y = "Average Rental Count of Casual Users",fill = "Weather Condition") +
+  scale_fill_manual(values = c("1" = "blue","2" = "green", "3" = "orange", "4" = "red"),
+                    labels=c("1"="Clear or Partly Cloudy", "2"="Mist of cloudy","3"="Light snow/rain or thunderstorm","4"="Heavy rain/snow or fog"))+
+  theme_minimal()
+
+
+#####Relationship Between Registered User and Season---- 
+
+ggplot(bike_train, aes(x = factor(season), y = registered, fill = factor(season))) + #Relationship Between Season and Average Rentals
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_text(stat = "summary", fun = "mean", aes(label = round(..y.., 1)), vjust = -0.5) +
+  labs(title = "Average Bike Rentals of Registered Users by Season Category", x = "Season Category", y = "Average Rental Count of Registered Users",fill = "Season") +
+  scale_fill_manual(values = c("1" = "purple","2" = "blue", "3" = "yellow", "4" = "orangered"),
+                    labels=c("1"="Winter", "2"="Spring","3"="Summer","4"="Fall"))+
+  theme_minimal()
+
+#####Relationship Between Casual User and Season----
+
+ggplot(bike_train, aes(x = factor(season), y = casual, fill = factor(season))) + #Relationship Between Season and Average Rentals
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_text(stat = "summary", fun = "mean", aes(label = round(..y.., 1)), vjust = -0.5) +
+  labs(title = "Average Bike Rentals of Casual Users by Season Category", x = "Season Category", y = "Average Rental Count of Casual Users",fill = "Season") +
+  scale_fill_manual(values = c("1" = "purple","2" = "blue", "3" = "yellow", "4" = "orangered"),
+                    labels=c("1"="Winter", "2"="Spring","3"="Summer","4"="Fall"))+
+  theme_minimal()
+
+####User Type Analysis----
+
+#####Hourly Usage by User Type----
+
+ggplot(bike_train,aes(x=hr, y=casual))+
+  geom_line(stat="summary", fun="mean", color="blue")+ #casual users
+  geom_line(aes(y=registered),stat="summary", fun="mean", color="green")+ #Registered Users
+  labs(title="Hourly Usage by User Type", x="Hour", y="Average Rentals")
+
+##### Usage of Registered Users----
+
+hist(bike_train$registered,main="Usage of Registered Users", xlab="registred")
+
+##### Usage of Casual Users-----
+
+hist(bike_train$registered,main="Usage of Registered Users", xlab="registred")
+
+#### Correlation----
+cor_matrix <- cor(bike_train[, sapply(bike_train, is.numeric)], use = "complete.obs")
+cor_matrix 
+
+####Running GGPlot----
+bike_train |>
+  select(
+    -yr,
+    -instant,
+    -hr,
+    -temp,
+    -hum,
+    -dteday,
+    -season, 
+    -holiday,
+    -weathersit, 
+    -atemp,
+    -mnth,
+  ) |>
+  ggpairs(aes(alpha=0.5))
+
+
+bike_train |>
+  select(
+    where(is.numeric),
+    -yr,
+    -instant,
+    -dteday
+  ) |>
+  ggpairs(aes(alpha=0.5))
+
+
+bike_train |>
+  select(
+    season, 
+    yr, 
+    registered,
+    casual,
+    hum_centered,
+    temp_centered,
+    workingday,
+    holiday
+  ) |>
+  ggpairs(aes(alpha=0.5))
+
+### Feature Engineering----
+
+bike_train <- bike_train |> #center variables 
+  mutate(
+    hr_centered = hr - mean(hr, na.rm = TRUE),
+    temp_centered = temp - mean(temp, na.rm = TRUE),
+    hum_centered = hum - mean(hum, na.rm = TRUE),
+    windspeed_centered = windspeed - mean(windspeed, na.rm = TRUE)
+  )
+
+view(bike_train)
+
+#####Convert Variables to Factors----
+
+bike_train$weekday<- as.factor(bike_train$weekday)
+bike_train$workingday<- as.factor(bike_train$workingday)
+bike_train$season<- as.factor(bike_train$season)
+bike_train$weathersit<- as.factor(bike_train$weathersit)
+bike_train$hr_c<- as.factor(bike_train$hr)
+levels(bike_train$workingday)
+levels(bike_train$season)
+bike_train$difatemp=bike_train$temp-bike_train$atemp
+
+###Regression Model ----
+####Model 1----
+#bike_train_cleaned<- bike_train[-14146,-15604,-14965 ] #remove the influential point (no significiant change)
+
+f1 <- lm(registered~ . +  #Final Adjusted Square .6983 (Need to update for the outlier)
+           workingday:season +
+           workingday:temp_centered+
+           workingday:hum_centered+
+           I(windspeed_centered^2)+
+           I(holiday*difatemp)+
+           I(difatemp^2)+
+           I(difatemp*hum_centered)+
+           I(hum_centered^2)+
+           I(mnth^2)+
+           I(mnth *difatemp),
+         data = bike_train |>
+           
+           select(
+             -atemp,
+             -temp,
+             -hr_centered,
+             -hum,
+             -cnt,
+             -windspeed,
+             -instant,
+             -casual
+             
+           )
+)
+plot(f1)
+summary(f1)
+
+
+####Test for Assumptions----
+vif(f1, type="predictor")
+coeftest(f1, vcov = vcovHC(f1, type = "HC0")) # Perform coeftest with robust standard errors 
+bptest(f1)
+dwtest(f1)
+
+####Model 2----
+#bike_train_cleaned<- bike_train[-14146, ] #remove the influential point (no significiant change)
+f2 <- lm(casual~ . +  #Final Adjusted Square .6676 
+           workingday:season +
+           workingday:temp_centered+
+           workingday:hum_centered+
+           I(windspeed_centered^2)+
+           I(holiday*difatemp)+
+           I(difatemp^2)+
+           I(difatemp*hum_centered)+
+           I(hum_centered^2)+
+           I(mnth^2)+
+           I(mnth *difatemp),
+         data = bike_train |>
+           select(
+             -dteday,
+             -atemp,
+             -temp,
+             -weathersit,
+             -hr_centered,
+             -hum,
+             -cnt,
+             -windspeed,
+             -instant,
+             -registered
+             
+           )
+)
+plot(f2)
+summary(f2)
+
+####Test for Assumptions----
+vif(f2, type="predictor")
+coeftest(f2, vcov = vcovHC(f2, type = "HC0")) # Perform coeftest with robust standard errors 
+bptest(f2)
+dwtest(f2)
+
+#### Selections----
+####Completing backward selection with model 1 ----
+f_backward<- step(
+  object=f1,
+  direction = "backward"
+)
+summary(f_backward)
+plot(f_backward)
+
+f_stepwise <- step( # start with a full model
+  object = f1,
+  direction = "both"
+)
+summary(f_stepwise)
+
+####Completing backward selection with model 2 ----
+f_backward2<- step(
+  object=f2,
+  direction = "backward"
+)
+summary(f_backward2)
+plot(f_backward2)
+
+f_stepwise2 <- step( # start with a full model
+  object = f2,
+  direction = "both"
+)
+summary(f_stepwise2)
+
+### Extracting Coefficients----
+#### Extracting Coefficient Model 1----
+f1_coef <- tidy(f1)
+
+f1_coef %>%
+  ggplot() +
+  geom_bar(
+    aes(x = term, y = estimate),
+    stat = "identity",
+    fill = "skyblue"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  geom_errorbar(
+    aes(x = term, ymin = estimate - 1.96 * std.error, ymax = estimate + 1.96 * std.error),
+    width = 0.4,
+    color = "orange",
+    alpha = 0.9
+  )
+
+#### Extracting Coefficients Model 2----
+f2_coef <- tidy(f2)
+
+f2_coef %>%
+  ggplot() +
+  geom_bar(
+    aes(x = term, y = estimate),
+    stat = "identity",
+    fill = "skyblue"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  geom_errorbar(
+    aes(x = term, ymin = estimate - 1.96 * std.error, ymax = estimate + 1.96 * std.error),
+    width = 0.4,
+    color = "orange",
+    alpha = 0.9
+  )
+
+### Model Evaluation for Model 1----
+# get fold indices
+k_fold_indices <- createFolds(
+  1:nrow(bike_train),
+  k = 10
+)
+
+# Declare a function to fit the model
+my_model_function <- function(dat) {
+  
+  bike_data_test <- dat # Make sure bike_data_test is the same as the input data
+  
+  # Ensure test data uses the same factor levels
+  bike_data_test$difatemp = bike_data_test$temp - bike_data_test$atemp
+  
+  dat$season<- as.factor(dat$season)
+  dat$weathersit<- as.factor(dat$weathersit)
+  dat$hr_c<- as.factor(dat$hr)
+  dat$workingday<- as.factor(dat$workingday)
+  dat$weekday<- as.factor(dat$weekday)
+  
+  # Add centered variables
+  bike_data_test <- bike_data_test %>%
+    mutate(
+      temp_centered = temp - mean(temp, na.rm = TRUE),
+      hum_centered = hum - mean(hum, na.rm = TRUE),
+      windspeed_centered = windspeed - mean(windspeed, na.rm = TRUE)
+    )
+  
+  # Fit the model
+  f1 <- lm(registered ~ . +  
+             workingday:season +
+             workingday:temp_centered +
+             workingday:hum_centered +
+             I(windspeed_centered^2) +
+             I(holiday * difatemp) +
+             I(difatemp^2) +
+             I(difatemp * hum_centered) +
+             I(hum_centered^2) +
+             I(mnth^2) +
+             I(mnth * difatemp),
+           data = dat %>%
+             select(
+               -dteday,
+               -atemp,
+               -temp,
+               -hr_centered,
+               -hum,
+               -cnt,
+               -windspeed,
+               -instant,
+               -casual
+             )
+  )
+  
+  # Return the model and updated test data
+  list(f1 = f1, bike_data_test = bike_data_test)
+}
+
+# Declare a function to get out-of-sample evaluations
+my_evaluation_function <- function(model, new_data) {
+  
+  # Remove any NA values for simplicity
+  new_data <- new_data %>%
+    na.omit()
+  
+  preds <- predict(model, new_data)
+  
+  # Ensure y is a numeric vector
+  y <- as.numeric(new_data$registered)
+  
+  oos_r2 <- calc_rsquared(
+    y = y,
+    yhat = preds
+  )
+  
+  oos_rmse <- ((new_data$registered - preds) ^ 2) %>%
+    mean() %>%
+    sqrt()
+  
+  tibble(   # Creating a dataframe
+    r2 = oos_r2,
+    rmse = oos_rmse
+  )
+}
+
+# Loop over folds and apply
+k_fold_results <- k_fold_indices %>%
+  map(function(fold) {
+    train <- bike_train[-fold, ]
+    test <- bike_train[fold, ]
+    model_result <- my_model_function(train)
+    f10 <- model_result$f1
+    bike_data_test <- model_result$bike_data_test
+    
+    coefs <- tidy(f1)
+    
+    evals <- my_evaluation_function(model = f1, new_data = test)
+    
+    list(
+      evals = evals,
+      coefs = coefs
+    )
+  }) 
+
+# Summarize R^2 and RMSE
+cv_evals <- k_fold_results %>%
+  map(function(x) x$evals) %>%
+  bind_rows()
+
+cv_coefs <- k_fold_results %>%
+  map(function(x) x$coefs)
+
+for (j in seq_along(cv_coefs)) {
+  cv_coefs[[j]]$fold = j
+}
+
+cv_coefs <- bind_rows(cv_coefs)
+
+# Plot our results
+cv_coefs %>%
+  filter(term != "(Intercept)") %>%
+  ggplot(aes(x = estimate, y = term, fill = term)) +
+  geom_density_ridges() + 
+  theme_ridges() + 
+  theme(legend.position = "none")
+
+cv_coefs %>%
+  filter(term %>% str_detect("^I")) %>%
+  ggplot(aes(x = estimate, y = term, fill = term)) +
+  geom_density_ridges() + 
+  theme_ridges() + 
+  theme(legend.position = "none")
+
+### Predictions and Conclusions Model 1----
+model_result <- my_model_function(bike_train)
+f1 <- model_result$f1
+bike_data_test <- model_result$bike_data_test
+
+test_predictions <- predict(f1, newdata = bike_data_test)
+
+# Ensure y is a numeric vector
+y <- as.numeric(bike_data_test$registered)
+
+# We have na values so need to address before calc_rsquared()
+test_results <- tibble(
+  r2 = calc_rsquared(
+    y = y[! is.na(test_predictions)],
+    yhat = test_predictions[! is.na(test_predictions)]
+  ),
+  rmse = ((bike_data_test$registered - test_predictions) ^ 2) %>%
+    mean(na.rm = TRUE) %>%
+    sqrt()
+)
+
+test_results
+
+tibble(
+  test_predictions,
+  actual = bike_data_test$registered
+) %>%
+  ggplot(aes(x = actual, y = test_predictions)) + 
+  geom_point()
+### Test Validation Data Model 1----
+# Declare a function to evaluate the model on the validation data
+validation_evaluation_function <- function(model, validation_data) {
+  # Process validation data similarly to how we processed training and test data
+  validation_set <- validation_set %>%
+    mutate(
+      season = factor(season, levels = levels(bike_train$season)),
+      hr_c = factor(hr, levels = levels(bike_train$hr_c)),
+      weathersit = factor(weathersit, levels = levels(bike_train$weathersit)),
+      workingday = factor(workingday, levels = levels(bike_train$workingday)),
+      weekday = factor(weekday, levels = levels(bike_train$weekday)),
+      difatemp = temp - atemp,
+      temp_centered = temp - mean(temp, na.rm = TRUE),
+      hum_centered = hum - mean(hum, na.rm = TRUE),
+      windspeed_centered = windspeed - mean(windspeed, na.rm = TRUE)
+    )
+  
+  # Remove NA values
+  validation_data <- validation_set %>% na.omit()
+  
+  # Predict
+  preds <- predict(model, validation_set)
+  
+  # Ensure y is a numeric vector
+  y <- as.numeric(validation_set$registered)
+  
+  # Calculate R-squared and RMSE
+  validation_r2 <- calc_rsquared(y = y, yhat = preds)
+  validation_rmse <- sqrt(mean((validation_data$registered - preds) ^ 2))
+  
+  tibble(r2 = validation_r2, rmse = validation_rmse)
+}
+
+# Evaluate model on validation set
+validation_results <- validation_evaluation_function(f1, validation_set)
+print(validation_results)
+
+
+
+
+
+### Model Evaluation for Model 2---- 
+# get fold indices
+k_fold_indices <- createFolds(
+  1:nrow(bike_train),
+  k = 10
+)
+
+# Declare a function to fit the model
+my_model_function <- function(dat) {
+  
+  bike_data_test <- dat # Make sure bike_data_test is the same as the input data
+  
+  # Ensure test data uses the same factor levels
+  #dat <- dat %>% mutate( 
+  # season = as.factor(season), 
+  #weathersit = as.factor(weathersit))
+  # hr_c = as.factor(hr), 
+  # workingday = as.factor(workingday), 
+  #weekday = as.factor(weekday) )
+  
+  
+  dat <- dat %>%
+    mutate(
+      season = factor(season, levels = levels(bike_train$season)),
+      hr_c = factor(hr, levels = levels(bike_train$hr_c)),
+      workingday = factor(workingday, levels = levels(bike_train$workingday)),
+      weekday = factor(weekday, levels = levels(bike_train$weekday))
+    )
+  
+  # Add centered variables
+  dat <- dat %>%
+    mutate(
+      difatemp = temp - atemp,
+      temp_centered = temp - mean(temp, na.rm = TRUE),
+      hum_centered = hum - mean(hum, na.rm = TRUE),
+      windspeed_centered = windspeed - mean(windspeed, na.rm = TRUE)
+    )
+  
+  # Fit the model
+  f2 <- lm(casual ~ . +  
+             workingday:season +
+             workingday:temp_centered +
+             workingday:hum_centered +
+             I(windspeed_centered^2) +
+             I(holiday * difatemp) +
+             I(difatemp^2) +
+             I(difatemp * hum_centered) +
+             I(hum_centered^2) +
+             I(mnth^2) +
+             I(mnth * difatemp),
+           data = dat %>%
+             select(
+               -dteday,
+               -atemp,
+               -temp,
+               -weathersit,
+               -hr_centered,
+               -hum,
+               -cnt,
+               -windspeed,
+               -instant,
+               -registered
+             )
+  )
+  
+  # Return the model and updated test data
+  list(f2 = f2, bike_data_test = bike_data_test)
+}
+
+# Declare a function to get out-of-sample evaluations
+my_evaluation_function <- function(model, new_data) {
+  
+  # Remove any NA values for simplicity
+  new_data <- new_data %>%
+    na.omit()
+  
+  preds <- predict(model, new_data)
+  
+  # Ensure y is a numeric vector
+  y <- as.numeric(new_data$casual)
+  
+  oos_r2 <- calc_rsquared(
+    y = y,
+    yhat = preds
+  )
+  
+  oos_rmse <- ((new_data$casual - preds) ^ 2) %>%
+    mean() %>%
+    sqrt()
+  
+  tibble(   # Creating a dataframe
+    r2 = oos_r2,
+    rmse = oos_rmse
+  )
+}
+
+# Loop over folds and apply
+k_fold_results <- k_fold_indices %>%
+  map(function(fold) {
+    train <- bike_train[-fold, ]
+    test <- bike_train[fold, ]
+    model_result <- my_model_function(train)
+    f2 <- model_result$f2
+    bike_data_test <- model_result$bike_data_test
+    
+    coefs <- tidy(f2)
+    
+    evals <- my_evaluation_function(model = f2, new_data = test)
+    
+    list(
+      evals = evals,
+      coefs = coefs
+    )
+  }) 
+
+# Summarize R^2 and RMSE
+cv_evals <- k_fold_results %>%
+  map(function(x) x$evals) %>%
+  bind_rows()
+
+cv_coefs <- k_fold_results %>%
+  map(function(x) x$coefs)
+
+for (j in seq_along(cv_coefs)) {
+  cv_coefs[[j]]$fold = j
+}
+
+cv_coefs <- bind_rows(cv_coefs)
+
+# Plot our results
+cv_coefs %>%
+  filter(term != "(Intercept)") %>%
+  ggplot(aes(x = estimate, y = term, fill = term)) +
+  geom_density_ridges() + 
+  theme_ridges() + 
+  theme(legend.position = "none")
+
+cv_coefs %>%
+  filter(term %>% str_detect("^I")) %>%
+  ggplot(aes(x = estimate, y = term, fill = term)) +
+  geom_density_ridges() + 
+  theme_ridges() + 
+  theme(legend.position = "none")
+
+### Predictions and Conclusions Model 2 ----
+model_result <- my_model_function(bike_train)
+f2 <- model_result$f2
+bike_data_test <- model_result$bike_data_test
+
+test_predictions <- predict(f2, newdata = bike_data_test)
+
+# Ensure y is a numeric vector
+y <- as.numeric(bike_data_test$casual)
+
+# We have na values so need to address before calc_rsquared()
+test_results <- tibble(
+  r2 = calc_rsquared(
+    y = y[! is.na(test_predictions)],
+    yhat = test_predictions[! is.na(test_predictions)]
+  ),
+  rmse = ((bike_data_test$casual - test_predictions) ^ 2) %>%
+    mean(na.rm = TRUE) %>%
+    sqrt()
+)
+
+test_results
+
+tibble(
+  test_predictions,
+  actual = bike_data_test$casual
+) %>%
+  ggplot(aes(x = actual, y = test_predictions)) + 
+  geom_point()
+
+### Test Validation Data----
+validation_evaluation_function <- function(model, validation_data) {
+  validation_set <- validation_set %>%
+    mutate(
+      season = factor(season, levels = levels(bike_train$season)),
+      hr_c = factor(hr, levels = levels(bike_train$hr_c)),
+      workingday = factor(workingday, levels = levels(bike_train$workingday)),
+      weekday = factor(weekday, levels = levels(bike_train$weekday)),
+      difatemp = temp - atemp, 
+      temp_centered = temp - mean(temp, na.rm = TRUE), 
+      hum_centered = hum - mean(hum, na.rm = TRUE), 
+      windspeed_centered = windspeed - mean(windspeed, na.rm = TRUE) ) 
+  # Remove NA values 
+  validation_set <- validation_set %>% na.omit()
+  # Predict 
+  preds <- predict(model, validation_set) 
+  # Ensure y is a numeric vector 
+  y <- as.numeric(validation_set$casual) 
+  # Calculate R-squared and RMSE 
+  validation_r2 <- calc_rsquared(y = y, yhat = preds)
+  validation_rmse <- sqrt(mean((validation_set$casual - preds) ^ 2)) 
+  tibble(r2 = validation_r2, rmse = validation_rmse) } 
+# Evaluate model on validation set 
+validation_results <- validation_evaluation_function(f2, validation_set) 
+print(validation_results)
+
+
+
+###Marginal Effects for Non-Linear Terms-----
+
+f2 <- lm(casual ~ . +  
+           workingday:season +
+           workingday:temp_centered +
+           workingday:hum_centered +
+           I(windspeed_centered^2) +
+           I(holiday * difatemp) +
+           I(difatemp^2) +
+           I(difatemp * hum_centered) +
+           I(hum_centered^2) +
+           I(mnth^2) +
+           I(mnth * difatemp),
+         data = bike_train %>%
+           select(
+             -dteday,
+             -atemp,
+             -temp,
+             -hr_centered,
+             -hum,
+             -cnt,
+             -windspeed,
+             -instant,
+             -registered
+           )
+)
+
+###Extract Coefficients for Model 2 ----
+coefs2<- tidy(f2)
+view(coefs2)
+
+coefs2 <- coef(f2) # Extract coefficients from the model
+
+##Mnth marginal effects
+bike_train %>%
+  ggplot(aes(x = mnth, y = casual)) + 
+  geom_point(alpha = 0.3) + 
+  geom_line(
+    aes(x = temp_centered, y = coefs[1] + coefs["mnth"] * temp_centered + coefs["I(mnth^2)"] * mnth^2),
+    linewidth = 1.25,
+    color = "purple"
+  )
+
+bike_train <- 
+  bike_train |>
+  mutate(
+    mfx8 = coefs2$estimate[6] + 2 * coefs2$estimate[6] * bike_train$mnth
+  )
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = mnth, y = mfx8)) + 
+  geom_line()
+summary(bike_train$mfx8) ##If the month increases by 1 value the amount of rentals increases by 75.26. This supports the seasonal increases for rentals for casual users. 
+
+
+##windspeed marginal effects
+bike_train %>%
+  ggplot(aes(x = windspeed_centered, y = casual)) + 
+  geom_point(alpha = 0.3) + 
+  geom_line(
+    aes(x = temp_centered, y = coefs2[1] + coefs2["windspeed_centered"] * windspeed_centered + coefs2["I(windspeed_centered^2)"] * windspeed_centered^2),
+    linewidth = 1.25,
+    color = "red"
+  )
+
+bike_train <- 
+  bike_train |>
+  mutate(
+    mfx7 = coefs2$estimate[18] + 2 * coefs2$estimate[18] * bike_train$windspeed_centered
+  )
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = windspeed_centered, y = mfx7)) + 
+  geom_line()
+summary(bike_train$mfx7) ##If the windspeed increases by 1 value the amount of rentals decreases by 7.977
+
+
+##Humidity marginal effects
+bike_train %>%
+  ggplot(aes(x = hum_centered, y = casual)) + 
+  geom_point(alpha = 0.3) + 
+  geom_line(
+    aes(x = temp_centered, y = coefs2[1] + coefs2["hum_centered"] * hum_centered + coefs2["I(hum_centered^2)"] * hum_centered^2),
+    linewidth = 1.25,
+    color = "blue"
+  )
+
+bike_train <- 
+  bike_train |>
+  mutate(
+    mfx6 = coefs2$estimate[17] + 2 * coefs2$estimate[17] * bike_train$hum_centered
+  )
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = hum_centered, y = mfx6)) + 
+  geom_line()
+summary(bike_train$mfx6) ##If the humidity increases by 1 value the amount of rentals decreases by 78.93
+
+
+##Difference of Feel Like Tempature and Actual Temperature marginal effects
+bike_train %>%
+  ggplot(aes(x = difatemp, y = casual)) + 
+  geom_point(alpha = 0.2) + 
+  geom_line(
+    aes(x = temp_centered, y = coefs[1] + coefs["difatemp"] * difatemp + coefs["I(difatemp^2)"] * difatemp^2),
+    linewidth = 1.25,
+    color = "orange"
+  )
+
+bike_train <- 
+  bike_train |>
+  mutate(
+    mfx5 = coefs2$estimate[42] + 2 * coefs2$estimate[42] * bike_train$difatemp
+  )
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = difatemp, y = mfx5)) + 
+  geom_line()
+summary(bike_train$mfx5)  #If the difference between the actual temperature and feels like temperature decreases by 1, we should expect less than 159.4 less rentals 
+
+
+
+###Extract Coefficients for Model 1 ----
+
+f1 <- lm(registered ~ . +  
+           workingday:season +
+           workingday:temp_centered +
+           workingday:hum_centered +
+           I(windspeed_centered^2) +
+           I(holiday * difatemp) +
+           I(difatemp^2) +
+           I(difatemp * hum_centered) +
+           I(hum_centered^2) +
+           I(mnth^2) +
+           I(mnth * difatemp),
+         data = bike_train %>%
+           select(
+             -dteday,
+             -atemp,
+             -temp,
+             -hr_centered,
+             -hum,
+             -cnt,
+             -windspeed,
+             -instant,
+             -casual
+           )
+)
+
+coefs1<- tidy(f1)
+view(coefs1)
+
+coefs1 <- coef(f1) # Extract coefficients from the model
+
+
+## Month marginal effects
+bike_train %>%
+  ggplot(aes(x = mnth, y = registered)) + 
+  geom_point(alpha = 0.5) + 
+  geom_line(
+    aes(x = mnth, y = coefs[1] + coefs["mnth"] * mnth + coefs["I(mnth^2)"] * mnth^2),
+    linewidth = 1.25,
+    color = "purple"
+  )
+
+bike_train <- 
+  bike_train |>
+  mutate(
+    mfx1 = coefs1$estimate[6] + 2 * coefs1$estimate[6] * bike_train$mnth
+  )
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = mnth, y = mfx1)) + 
+  geom_line()
+summary(bike_train$mfx1)
+
+
+## Difference of Feel Like Temperature and Actual Temperature marginal effects
+bike_train %>%
+  ggplot(aes(x = difatemp, y = registered)) + 
+  geom_point(alpha = 0.5) + 
+  geom_line(
+    aes(x = mnth, y = coefs[1] + coefs["difatemp"] * mnth + coefs["I(difatemp^2)"] * difatemp^2),
+    linewidth = 1.25,
+    color = "green"
+  )
+
+bike_train <- 
+  bike_train |>
+  mutate(
+    mfx2 = coefs1$estimate[45] + 2 * coefs1$estimate[45] * bike_train$difatemp
+  )
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = difatemp, y = mfx2)) + 
+  geom_line()
+
+summary(bike_train$mfx2)
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = difatemp, y = mfx2)) + 
+  geom_line() + 
+  geom_hline(aes(yintercept = 0), lty = 2)
+
+##Critical Point Values
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = mnth, y = mfx2)) + 
+  geom_line() + 
+  geom_hline(aes(yintercept = 0), lty = 2)
+
+summary(bike_train$mfx2)
+
+critical_point_estimate <- bike_train$difatemp[which.min(bike_train$mfx2 ^ 2)]
+
+critical_point_estimate
+
+## Windspeed marginal effects
+bike_train %>%
+  ggplot(aes(x = windspeed_centered, y = registered)) + 
+  geom_point(alpha = 0.5) + 
+  geom_line(
+    aes(x = mnth, y = coefs[1] + coefs["windspeed_centered"] * mnth + coefs["I(windspeed_centered^2)"] * windspeed_centered^2),
+    linewidth = 1.25,
+    color = "lightblue"
+  )
+
+bike_train <- 
+  bike_train |>
+  mutate(
+    mfx3 = coefs1$estimate[53] + 2 * coefs1$estimate[53] * bike_train$windspeed_centered
+  )
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = windspeed_centered, y = mfx3)) + 
+  geom_line()
+summary(bike_train$mfx3)   #If the windspeed increases by 1km/h, we should expect 22 more rentals 
+
+
+## Humidity marginal effects
+bike_train %>%
+  ggplot(aes(x = hum_centered, y = registered)) + 
+  geom_point(alpha = 0.5) + 
+  geom_line(
+    aes(x = mnth, y = coefs[1] + coefs["hum_centered"] * mnth + coefs["I(hum_centered^2)"] * hum_centered^2),
+    linewidth = 1.25,
+    color = "yellow"
+  )
+
+bike_train <- 
+  bike_train |>
+  mutate(
+    mfx4 = coefs1$estimate[28] + 2 * coefs1$estimate[28] * bike_train$hum_centered
+  )
+
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = hum_centered, y = mfx4)) + 
+  geom_line()
+summary(bike_train$mfx4) #If humidity increase by 1, we should expect 156 more bike rentals from registered users
+
+##Critical Point Values 
+bike_train |> # so the mfx changes depending on x
+  ggplot(aes(x = hum_centered, y = mfx4)) + 
+  geom_line() + 
+  geom_hline(aes(yintercept = 0), lty = 2)
+
+summary(bike_train$mfx4) 
+
+critical_point_estimate4 <- bike_train$hum_centered[which.min(bike_train$mfx4 ^ 2)] 
+
+critical_point_estimate4
+
+bike_train |>
+  filter(hum_centered < critical_point_estimate4 ) |>  ##When x is less than -.4984 humid the average marginal effect on y is 156.24
+  select(mfx4) |>
+  summary()
+
+bike_train |>
+  filter(hum_centered >= critical_point_estimate4 ) |>  ## When x is greater than -.4984 humid than the average marginal effect on y is -31.56
+  select(mfx4) |>
+  summary()

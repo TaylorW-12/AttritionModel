@@ -1,0 +1,126 @@
+### Week 4 Exercise ----
+
+# Our goal is to predict whether a penguin is male or female based on its characteristics.
+
+### Set up ----
+
+# load libraries
+library(tidyverse) # tidyverse
+
+library(broom) # to clean model outputs
+
+library(GGally) # for pairs plots with ggplot
+
+library(palmerpenguins) # for example 1
+
+library(caret) # train/test splits and cross validation splits
+
+library(pROC) # Sampling-over and under, ROC and AUC curve
+
+library(margins) # for average marginal effects
+
+# Set seed for reproducibility
+set.seed(90210)
+
+### Load Data ----
+data(penguins)
+
+# Let's do a complete case analysis for simplicity
+penguins <- penguins |>
+  drop_na()
+
+### Step 1: Create a train/test split ----
+penguins_partition <- 
+  createDataPartition(
+    1:nrow(penguins), # no stratification
+    p = 0.2
+  )
+
+penguins_train <- 
+  penguins[-penguins_partition[[1]], ]
+
+penguins_test <- 
+  penguins[penguins_partition[[1]], ]
+
+validate_partition <- 
+  createDataPartition(
+    1:nrow(penguins_train),
+    p = 0.3
+  )
+
+penguins_validate <- 
+  penguins_train[validate_partition[[1]], ]
+
+penguins_train <- 
+  penguins_train[-validate_partition[[1]], ]
+
+### Step 2: Data Exploration ----
+
+summary(penguins_train)
+
+# correlations
+# can use ggpairs on small data
+# larger data means using subsets and/or manual calculation of stats
+penguins_train |>
+  select(
+    - year,
+  ) |>
+  ggpairs(aes(color = sex, alpha = 0.5))
+
+
+### Step 3: Data pre-processing ----
+## Skipping for now. Going with complete case analysis
+
+### Step 4: Feature Engineering ----
+## Skipping for now. Mostly doing transformations in formulas, below.
+
+### Step 5: Feature & Model Selection ----
+
+# build a logistic regression model predicting sex
+# include all variables in your data set except year
+
+# summarize your model
+f1<-glm(
+    sex~.+
+      I(species^2)+
+      I(bill_length_mm^2)+
+      I(bill_depth_mm^2)+
+      I(flipper_length_mm^2)+
+      I(body_mass_g^2)+
+    island,
+    data = penguins_train |>
+      
+    )
+    family = binomial("logit")
+
+
+
+# Get the in-sample AUC
+
+
+
+# use stepwise regression with direction = "both" to select variables automatically
+
+# get the in-sample AUC
+
+# which model works better?
+
+### Step 6: Model Evaluation ----
+
+# plot a ROC curve and get AUC of both models above
+# which is better?
+
+# Choose the model you think is better
+# get that model's marginal effects on the odds
+# get that model's approximate marginal effects on the probabilities
+
+# pick the variable with the highest marginal effect of both odds and probabilities
+# Are they the same variable?
+# For each, write a sentence in English describing how that/those variable(s)
+# affect the odds/probability of predicting a penguin's sex
+
+
+
+### Step 7: Predictions and Conclusions ----
+
+# feel free 

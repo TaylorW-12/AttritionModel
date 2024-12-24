@@ -1,0 +1,408 @@
+### Week 2 Examples ----
+
+# Our goal is to build a model for body mass of penguins
+# We will partition the data, examine summary statistics, correlations and distributions
+# then we will build an initial model and do some preliminary analysis
+# finally, we'll evaluate our model using 10-fold cross validation on the training set
+# next week, we'll get into more detail before doing a final evaluation on the test set
+
+
+### Set up ----
+
+# load libraries
+library(tidyverse) # tidyverse
+
+library(broom) # to clean model outputs
+
+library(GGally) # for pairs plots with ggplot
+
+library(palmerpenguins) # for example 1
+
+library(caret) # train/test splits and cross validation splits
+
+library(mvrsquared) # out of sample R-squared calculations
+
+library(ggridges) # plotting ridgeline distributions
+
+# Set seed for reproducibility
+set.seed(90210)
+
+### Load Data ----
+data(penguins)
+
+### Step 1: Create a train/test split ----
+penguins_partition <- 
+  createDataPartition(
+    1:nrow(penguins), # no stratification
+    times = 1,
+    p = .3
+  )
+
+penguins_train <- 
+  penguins[-penguins_partition[[1]], ]
+
+penguins_test <- 
+  penguins[penguins_partition[[1]], ]
+
+### Step 2: Data Exploration ----
+
+summary(penguins_train)
+
+# more detail on numeric variables (except year)
+numeric_summaries <- 
+  penguins_train |>
+  select(
+    where(is.numeric),
+    -year
+  ) |>
+  pivot_longer(everything()) |>
+  summarize(
+    mean = mean(value, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    num_missing = sum(is.na(value)),
+    .by = name
+  )
+
+numeric_summaries
+
+# correlations
+# can use ggpairs on small data
+# larger data means using subsets and/or manual calculation of stats
+penguins_train |>
+  select(
+    where(is.numeric),
+    - year,
+  ) |>
+  ggpairs(aes(alpha = 0.5))
+
+# noticing the distinct groups in scatterplots of bill_depth_mm
+# this is most pronouced by species (Explore for yourself to verify)
+penguins_train |>
+  select(
+    where(is.numeric),
+    - year,
+    species
+  ) |>
+  ggpairs(aes(color = species, alpha = 0.5))
+
+
+### Step 3: Data pre-processing ----
+## Skipping for now. Going with complete case analysis
+
+### Step 4: Feature Engineering ----
+## Skipping for now. Mostly doing transformations in formulas, below.
+
+### Step 5: Feature & Model Selection ----
+
+f1 <- lm(
+  body_mass_g ~ ., 
+  data = penguins_train |> 
+    select(
+      where(is.numeric), 
+      -year,
+      sex
+    )
+)
+
+
+str(f1)
+
+summary(f1)
+
+plot(f1)
+
+# add quadratic terms
+f2 <- lm(
+  body_mass_g ~ . + 
+    I(bill_length_mm ^ 2) + 
+    I(bill_depth_mm ^ 2) + 
+    I(flipper_length_mm ^ 2), 
+  data = penguins_train |> 
+    select(
+      where(is.numeric), 
+      -year,
+      sex
+    )
+)
+
+summary(f2)
+
+plot(f2)
+
+
+# Add interaction terms 
+f3 <- lm(
+  body_mass_g ~ . + 
+    I(bill_length_mm ^ 2) + 
+    I(bill_depth_mm ^ 2) + 
+    I(flipper_length_mm ^ 2) + 
+    I(bill_length_mm * bill_depth_mm) + 
+    I(bill_length_mm * flipper_length_mm) + 
+    I(bill_depth_mm * flipper_length_mm), 
+  data = penguins_train |> 
+    select(
+      where(is.numeric), 
+      -year,
+      sex
+    )
+)
+
+summary(f3)
+
+plot(f3)
+
+# Stepwise regression
+
+# start with model 3 for backwards selection
+f_backward <- step(
+  object = f3,
+  direction = "backward"
+)
+
+summary(f_backward)
+
+plot(f_backward)
+
+# forwards selection
+
+f_forward <- step(
+  object = lm(
+    body_mass_g ~ 1, 
+    data = penguins_train |> 
+      select(
+        where(is.numeric), 
+        -year,
+        sex
+      )),
+  direction = "forward",
+  scope = body_mass_g ~ 
+    bill_length_mm +
+    bill_depth_mm +
+    flipper_length_mm +
+    I(bill_length_mm ^ 2) + 
+    I(bill_depth_mm ^ 2) + 
+    I(flipper_length_mm ^ 2) + 
+    I(bill_length_mm * bill_depth_mm) + 
+    I(bill_length_mm * flipper_length_mm) + 
+    I(bill_depth_mm * flipper_length_mm)
+)
+
+summary(f_forward)
+
+plot(f_forward)
+
+# stepwise
+f_stepwise <- step( # start with a full model
+  object = f3,
+  direction = "both"
+)
+
+summary(f_stepwise)
+
+plot(f_stepwise)
+
+
+f_stepwise2 <- step( # start with an empty model
+  object = lm(
+    body_mass_g ~ 1, 
+    data = penguins_train |> 
+      select(
+        where(is.numeric), 
+        -year,
+        sex
+      )
+  ),
+  scope = body_mass_g ~ 
+    bill_length_mm +
+    bill_depth_mm +
+    flipper_length_mm +
+    I(bill_length_mm ^ 2) + 
+    I(bill_depth_mm ^ 2) + 
+    I(flipper_length_mm ^ 2) + 
+    I(bill_length_mm * bill_depth_mm) + 
+    I(bill_length_mm * flipper_length_mm) + 
+    I(bill_depth_mm * flipper_length_mm),
+  direction = "both"
+)
+
+summary(f_stepwise2)
+
+plot(f_stepwise2)
+
+# Extract coefficients & plot them 
+# let's focus on the second model
+
+# extract coefficient values into a tidy tibble
+f2_coef <- tidy(f2)
+
+# Plot coefficients with 95% confidence intervals
+f2_coef |>
+  ggplot() +
+  geom_bar(
+    aes(x = term, y = estimate), 
+    stat = "identity", 
+    fill = "skyblue"
+  ) +
+  geom_errorbar(
+    aes(x = term, ymin = estimate - 1.96 * std.error, ymax = estimate + 1.96 * std.error), 
+    width = 0.4,
+    color = "orange", 
+    alpha = 0.9
+  )
+
+# The intercept is just swamping that plot. Let's remove it
+f2_coef |>
+  filter(term != "(Intercept)") |>
+  ggplot() +
+  geom_bar(
+    aes(x = term, y = estimate), 
+    stat = "identity", 
+    fill = "skyblue"
+  ) +
+  geom_errorbar(
+    aes(x = term, ymin = estimate - 1.96 * std.error, ymax = estimate + 1.96 * std.error),
+    width = 0.4, 
+    color = "orange",
+    alpha = 0.9
+  )
+
+### Step 6: Model Evaluation ----
+# 10-fold CV 
+# We want to see how stable our selected model (f2) is
+# Look at...
+# 1. Coefficients and std errors for each fold
+# 2. Out of sample RMSE for each fold
+# 3. Out of sample R-squared for each fold
+
+# get fold indices
+k_fold_indices <- createFolds(
+  1:nrow(penguins_train),
+  k = 10
+)
+
+# declare a function to fit the model
+my_model_function <- function(dat) {
+  
+  f <- lm(
+    body_mass_g ~ . + 
+      I(bill_length_mm ^ 2) + 
+      I(bill_depth_mm ^ 2) + 
+      I(flipper_length_mm ^ 2), 
+    data = dat |>
+      select(
+        where(is.numeric),
+        -year,
+        sex
+      )
+  )
+  
+  f
+}
+
+# declare a function to get out-of-sample evaluations
+my_evaluation_function <- function(model, new_data) {
+  
+  # remove any NA values for simplicity
+  new_data <- 
+    new_data |>
+    na.omit()
+  
+  preds <- predict(model, new_data)
+  
+  oos_r2 <- calc_rsquared(
+    y = new_data$body_mass_g,
+    yhat = preds
+  )
+  
+  oos_rmse <- ((new_data$body_mass_g - preds) ^ 2) |> #RMSE 
+    mean() |>
+    sqrt()
+  
+  tibble(   #creating a dataframe
+    r2 = oos_r2,
+    rmse = oos_rmse
+  )
+}
+
+# loop over folds and apply
+k_fold_results <-
+  k_fold_indices |>
+  map(function(fold){
+    train <- penguins_train[-fold, ]
+    
+    test <- penguins_train[fold, ]
+    
+    f <- my_model_function(train)
+    
+    coefs <- tidy(f)
+    
+    evals <- my_evaluation_function(model = f, new_data = test)
+    
+    list(
+      evals = evals,
+      coefs = coefs
+    )
+  }) 
+
+cv_evals <- #R^2 and RMSE and you can summarize it 
+  k_fold_results |>
+  map(function(x) x$evals) |>
+  bind_rows()
+
+cv_coefs <- 
+  k_fold_results |>
+  map(function(x) x$coefs)
+
+for (j in seq_along(cv_coefs)) {
+  cv_coefs[[j]]$fold = j
+}
+
+cv_coefs <- bind_rows(cv_coefs)
+
+# plot our results
+cv_coefs |>
+  filter(
+    term != "(Intercept)"
+  ) |>
+  ggplot(aes(x = estimate, y = term, fill = term)) +
+  geom_density_ridges() + 
+  theme_ridges() + 
+  theme(legend.position = "none")
+
+
+cv_coefs |>
+  filter(
+    term |> str_detect("^I")
+  ) |>
+  ggplot(aes(x = estimate, y = term, fill = term)) +
+  geom_density_ridges() + 
+  theme_ridges() + 
+  theme(legend.position = "none")
+
+
+### Step 7: Predictions and Conclusions ----
+test_predictions <- 
+  predict(f2, newdata = penguins_test)
+
+# we have na values so need to address before calc_rsquared()
+# in this case
+test_results <- tibble(
+  r2 = calc_rsquared(
+    y = penguins_test$body_mass_g[! is.na(test_predictions)],
+    yhat = test_predictions[! is.na(test_predictions)]
+  ),
+  rmse = ((penguins_test$body_mass_g - test_predictions) ^ 2) |> 
+    mean(na.rm = TRUE) |> 
+    sqrt()
+)
+
+
+test_results
+
+tibble(
+  test_predictions,
+  actual = penguins_test$body_mass_g
+) |>
+  ggplot(aes(x = actual, y = test_predictions)) + 
+  geom_point()

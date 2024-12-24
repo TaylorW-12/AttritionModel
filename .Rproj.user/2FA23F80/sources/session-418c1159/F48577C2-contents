@@ -1,0 +1,277 @@
+### Week 4 Simple Logistic Regression ----
+
+### Set up ----
+
+# load libraries
+library(tidyverse)
+
+library(caret)
+
+library(GGally)
+
+library(broom)
+
+library(readxl) # read excel files
+
+library(pROC) # Sampling-over and under, ROC and AUC curve
+
+library(margins) # for average marginal effects
+
+
+# set a random seed for reproducibility
+set.seed(385)
+
+### Load Data ----
+ice_cream <- read_excel("Ice Cream Sales Dataset.xlsx")
+
+# check data structure
+str(ice_cream)
+
+summary(ice_cream)
+
+# any obvious pre-formatting, do here (e.g., numeric to categorical etc.)
+
+# Since buy_ind is 0, 1, we can leave it as numeric or turn it into a factor
+# Let's leave it as numeric until we do pairs plots
+
+### Step 1: Create a train/test split ----
+test_idx <- createDataPartition(
+  ice_cream$buy_ind,
+  p = 0.3
+)
+
+ice_cream_train <- ice_cream[-test_idx[[1]], ]
+
+ice_cream_test <- ice_cream[test_idx[[1]], ]
+
+### Step 2: Data Exploration ----
+# univariate summaries
+summary(ice_cream_train)
+
+# pairs plots
+ice_cream_train |>
+  mutate(
+    buy_ind = factor(buy_ind)
+  ) |>
+  ggpairs()
+
+ice_cream_train |>
+  mutate(
+    buy_ind = factor(buy_ind)
+  ) |>
+  ggpairs(aes(color = buy_ind, alpha = 0.3))
+
+# Check the marginal distribution
+ice_cream_marginal_dist <- 
+  ice_cream |>
+  mutate(
+    age_cat = case_when(
+      Age >= 40 ~ "Old",
+      TRUE ~ "Young"
+    ),
+    buy_cat = case_when(
+      buy_ind == 1 ~ "Buy",
+      TRUE ~ "Not buy"
+    )
+  ) |>
+  select(age_cat, buy_cat) |>
+  table() |>
+  proportions(margin = 1)
+
+ice_cream_marginal_dist
+
+### Step 3: Data pre-processing ----
+# no missing values, skipping
+
+### Step 4: Feature Engineering ----
+# skip for now
+
+### Step 5: Feature & Model Selection ----
+
+# fit a model
+f1 <- glm(
+  buy_ind ~ Age, 
+  data = ice_cream_train,
+  family = binomial("logit")
+)
+
+# initial checks
+summary(f1)
+
+# get the odds
+coefs <- tidy(f1)
+
+coefs <- 
+  coefs |>
+  mutate(
+    odds_estimate = exp(estimate),
+    odds_mfx = odds_estimate - 1
+  )
+
+coefs
+
+
+# So we can say for a one-unit increase in age, we expect to see about a 
+# 10 percentage point decrease in the odds of buying ice cream.
+
+# since this is simple logistic regression, we can easily plot it
+ice_cream_train |>
+  ggplot(aes(x = Age, y = buy_ind)) + 
+  geom_point() + 
+  geom_line(aes(y = 1 / (1 + exp(-1 * (coefs$estimate[1] + coefs$estimate[2] * Age))))) + #logistic function that is in the slides
+  ylab("") + 
+  labs(
+    title = "Propensity to Buy Ice Cream by Age",
+    subtitle = "Actual (points) vs. Fitted (curve)"
+  )
+
+### Logistic vs. Linear & Marginal Effects ----
+
+# what if we fit a linear model?
+f_linear <- lm(buy_ind ~ Age, data = ice_cream_train)
+
+summary(f_linear)
+
+# you can get the average marginal effect by using margins::margins()
+mfx <- margins(f1)
+
+mfx # close to linear
+
+# So we can say for a one-unit increase in age, we expect to see 
+# the probability of buying ice cream to decrease by 0.014 on average.
+
+
+# let's plot all three
+ice_cream_train |>
+  ggplot(aes(x = Age, y = buy_ind)) + 
+  geom_point() + 
+  geom_line(aes(y = 1 / (1 + exp(-1 * (coefs$estimate[1] + coefs$estimate[2] * Age))))) + 
+  geom_line(aes(y = 0.835 - 0.013 * Age), color = "blue", lty = 3) +
+  geom_line(aes(y = 1 - 0.014 * Age), color = "red", lty = 2) + 
+  ylab("") + 
+  labs(
+    title = "Propensity to Buy Ice Cream by Age",
+    subtitle = "Logistic (black) vs. Linear (blue) vs. Avg. Logistic Marginal Effect (red)"
+  )
+
+### In-sample evaluation ----
+# create a confusion matrix
+# here we are choosing a threshold of 0.5 to assign classes
+#DO NOT HAVE TO USE IN PROJECT BUT GOOD TO KNOW
+confusion1 <- confusionMatrix(
+  
+  data = case_when(
+    f1$fitted.values >= 0.5 ~ 1,
+    TRUE ~ 0
+  ) |>
+    factor(),
+  
+  reference = ice_cream_train$buy_ind |> 
+    factor()
+)
+
+confusion1$table # see our confusion matrix
+
+confusion1$byClass # get precision and recall
+
+# ROC analysis
+roc1 <- 
+  tibble(
+    actual = ice_cream_train$buy_ind,
+    predicted = f1$fitted.values
+  ) |>
+  roc("actual", "predicted")
+
+plot(roc1)
+
+roc1$auc
+
+### Step 6: Model Validation ----
+cv_indices <- 
+  createFolds(
+    ice_cream_train$buy_ind,
+    k = 5
+  )
+
+cv_results <- 
+  cv_indices |>
+  map(function(idx){
+    
+    # train test split
+    train <- ice_cream_train[-idx, ]
+    
+    test <- ice_cream_train[idx, ]
+    
+    # fit model
+    f <- glm(buy_ind ~., data = train, family = binomial("logit"))
+    
+    # get out of sample predictions
+    preds <- predict(f, test, type = "response")
+    
+    # calculate precision/recall at threshold of 0.5
+    confusion <- confusionMatrix(
+      
+      data = case_when(
+        preds >= 0.5 ~ 1,
+        TRUE ~ 0
+      ) |>
+        factor(),
+      
+      reference = test$buy_ind |> 
+        factor()
+    )
+    
+    precision <- confusion$byClass["Precision"]
+    
+    recall <- confusion$byClass["Recall"]
+    
+    # calculate AUC for ROC analysis
+    roc_curve <- tibble(
+      actual = test$buy_ind,
+      predicted = preds
+    ) |>
+      roc("actual", "predicted")
+    
+    auc <- roc_curve$auc |>
+      as.numeric() # need to convert
+    
+    # get tibble out
+    tibble(
+      auc = auc,
+      precision = precision,
+      recall = recall
+    )
+    
+  }) |>
+  bind_rows()
+
+cv_results
+
+### Step 7: Predictions and Conclusions ----
+preds_test <- predict(f1, ice_cream_test, "response")
+
+confusion_test <- confusionMatrix(
+  data = case_when(
+    preds_test >= 0.5 ~ 1,
+    TRUE ~ 0
+  ) |>
+    factor(),
+  
+  reference = ice_cream_test$buy_ind |> 
+    factor()
+  
+)
+
+confusion_test$table
+
+confusion_test$byClass[c("Precision", "Recall")]
+
+roc_test <- tibble(
+  actual = ice_cream_test$buy_ind,
+  predicted = preds_test
+) |>
+  roc("actual", "predicted")
+
+plot(roc_test)
+
+roc_test$auc
